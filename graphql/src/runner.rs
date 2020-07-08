@@ -107,10 +107,30 @@ where
         Ok(exts)
     }
 
+    /// Check if the subgraph state differs from `state` now in a way that
+    /// would affect a query that looked at data as fresh as `latest_block`.
+    /// If the subgraph did change, return the `Err` that should be sent back
+    /// to clients to indicate that condition
+    fn deployment_changed(
+        &self,
+        state: DeploymentState,
+        latest_block: u64,
+    ) -> Result<(), QueryExecutionError> {
+        let new_state = self.store.deployment_state_from_id(state.id.clone())?;
+        if state.reorg_count != new_state.reorg_count {
+            if latest_block
+                >= state.latest_ethereum_block_number as u64 - state.max_reorg_depth as u64
+            {
+                return Err(QueryExecutionError::DeploymentReverted);
+            }
+        }
+        Ok(())
+    }
+
     fn execute(
         &self,
         query: Query,
-        _state: DeploymentState,
+        state: DeploymentState,
         max_complexity: Option<u64>,
         max_depth: Option<u8>,
         max_first: Option<u32>,
@@ -145,6 +165,7 @@ where
         let (bc, selection_set) = by_block_constraint.next().unwrap();
         let (resolver, block_ptr) =
             StoreResolver::at_block(&self.logger, self.store.clone(), bc, &query.schema.id)?;
+        let mut latest_block = block_ptr.number;
         let mut result = execute(selection_set, block_ptr, resolver);
 
         // We want to optimize for the common case of a single block constraint, where we can avoid
@@ -158,12 +179,14 @@ where
                     bc,
                     &query.schema.id,
                 )?;
+                latest_block = latest_block.max(block_ptr.number);
                 partial_res.append(execute(selection_set, block_ptr, resolver).as_ref().clone());
             }
             result = Arc::new(partial_res);
         }
-
-        Ok(result)
+        self.deployment_changed(state, latest_block)
+            .map_err(QueryResult::from)
+            .map(|()| result)
     }
 }
 

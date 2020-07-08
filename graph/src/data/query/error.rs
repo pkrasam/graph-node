@@ -77,6 +77,7 @@ pub enum QueryExecutionError {
     Panic(String),
     EventStreamError,
     FulltextQueryRequiresFilter,
+    DeploymentReverted,
 }
 
 impl Error for QueryExecutionError {
@@ -224,7 +225,8 @@ impl fmt::Display for QueryExecutionError {
             Panic(msg) => write!(f, "panic processing query: {}", msg),
             EventStreamError => write!(f, "error in the subscription event stream"),
             FulltextQueryRequiresFilter => write!(f, "fulltext search queries can only use EntityFilter::Equal"),
-            TooExpensive => write!(f, "query is too expensive")
+            TooExpensive => write!(f, "query is too expensive"),
+            DeploymentReverted => write!(f, "the subgraph deployment was reverted while executing the query"),
         }
     }
 }
