@@ -377,6 +377,7 @@ where
         // Execute the query. We are in a blocking context so we may just block.
         let result = graph::block_on_allow_panic(self.graphql_runner.run_query_with_complexity(
             query,
+            DeploymentState::meta(),
             None,
             None,
             Some(std::u32::MAX),
@@ -459,6 +460,7 @@ where
         // Execute the query. We are in a blocking context so we may just block.
         let result = graph::block_on_allow_panic(self.graphql_runner.run_query_with_complexity(
             query,
+            DeploymentState::meta(),
             None,
             None,
             Some(std::u32::MAX),
@@ -622,6 +624,7 @@ where
         // Execute the query. We are in a blocking context so we may just block.
         let result = graph::block_on_allow_panic(self.graphql_runner.run_query_with_complexity(
             query,
+            DeploymentState::meta(),
             None,
             None,
             Some(std::u32::MAX),

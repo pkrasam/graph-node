@@ -1190,3 +1190,12 @@ impl UnresolvedSubgraphManifest {
 pub struct DeploymentState {
     pub id: SubgraphDeploymentId,
 }
+
+impl DeploymentState {
+    /// Return a `DeploymentState` suitable for querying the metadata subgraph
+    pub fn meta() -> Self {
+        DeploymentState {
+            id: SUBGRAPHS_ID.clone(),
+        }
+    }
+}

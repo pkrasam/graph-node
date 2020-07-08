@@ -13,8 +13,8 @@ use crate::query::execute_query;
 use crate::subscription::execute_prepared_subscription;
 use graph::data::graphql::effort::LoadManager;
 use graph::prelude::{
-    async_trait, o, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait, Logger, Query,
-    QueryExecutionError, QueryResult, Store, StoreError, SubgraphDeploymentId,
+    async_trait, o, DeploymentState, EthereumBlockPointer, GraphQlRunner as GraphQlRunnerTrait,
+    Logger, Query, QueryExecutionError, QueryResult, Store, StoreError, SubgraphDeploymentId,
     SubgraphDeploymentStore, Subscription, SubscriptionError, SubscriptionResultFuture,
 };
 
@@ -110,6 +110,7 @@ where
     fn execute(
         &self,
         query: Query,
+        _state: DeploymentState,
         max_complexity: Option<u64>,
         max_depth: Option<u8>,
         max_first: Option<u32>,
@@ -171,9 +172,10 @@ impl<S> GraphQlRunnerTrait for GraphQlRunner<S>
 where
     S: Store + SubgraphDeploymentStore,
 {
-    async fn run_query(self: Arc<Self>, query: Query) -> Arc<QueryResult> {
+    async fn run_query(self: Arc<Self>, query: Query, state: DeploymentState) -> Arc<QueryResult> {
         self.run_query_with_complexity(
             query,
+            state,
             *GRAPHQL_MAX_COMPLEXITY,
             Some(*GRAPHQL_MAX_DEPTH),
             Some(*GRAPHQL_MAX_FIRST),
@@ -184,11 +186,12 @@ where
     async fn run_query_with_complexity(
         &self,
         query: Query,
+        state: DeploymentState,
         max_complexity: Option<u64>,
         max_depth: Option<u8>,
         max_first: Option<u32>,
     ) -> Arc<QueryResult> {
-        self.execute(query, max_complexity, max_depth, max_first)
+        self.execute(query, state, max_complexity, max_depth, max_first)
             .unwrap_or_else(|e| Arc::new(e))
     }
 

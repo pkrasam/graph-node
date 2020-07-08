@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt;
-use std::ops::Deref;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
@@ -207,8 +206,7 @@ where
                     ))
                 })?;
 
-        self.handle_graphql_query(state.id, request.into_body())
-            .await
+        self.handle_graphql_query(state, request.into_body()).await
     }
 
     fn handle_graphql_query_by_id(
@@ -222,41 +220,28 @@ where
         match res {
             Err(_) => self.handle_not_found(),
             Ok(state) => self
-                .handle_graphql_query(state.id, request.into_body())
+                .handle_graphql_query(state, request.into_body())
                 .boxed(),
         }
     }
 
     async fn handle_graphql_query(
         self,
-        id: SubgraphDeploymentId,
+        state: DeploymentState,
         request_body: Body,
     ) -> GraphQLServiceResult {
         let service = self.clone();
         let service_metrics = self.metrics.clone();
-        let sd_id = id.clone();
+        let sd_id = state.id.clone();
 
-        match self.store.is_deployed(&id) {
-            Err(e) => {
-                return Err(GraphQLServerError::InternalError(e.to_string()));
-            }
-            Ok(false) => {
-                return Err(GraphQLServerError::ClientError(format!(
-                    "No data found for subgraph {}",
-                    id
-                )));
-            }
-            Ok(true) => (),
-        }
-
-        let schema = match self.store.api_schema(&id) {
+        let schema = match self.store.api_schema(&state.id) {
             Ok(schema) => schema,
             Err(e) => {
                 return Err(GraphQLServerError::InternalError(e.to_string()));
             }
         };
 
-        let network = match self.store.network_name(&id) {
+        let network = match self.store.network_name(&sd_id) {
             Ok(network) => network,
             Err(e) => {
                 return Err(GraphQLServerError::InternalError(e.to_string()));
@@ -274,9 +259,10 @@ where
                 let query_text = query.query_text.cheap_clone();
                 let variables_text = query.variables_text.cheap_clone();
 
-                let result =
-                    graph::spawn_blocking_allow_panic(service.graphql_runner.run_query(query))
-                        .await;
+                let result = graph::spawn_blocking_allow_panic(
+                    service.graphql_runner.run_query(query, state),
+                )
+                .await;
 
                 match result {
                     Ok(res) => res,
@@ -309,7 +295,7 @@ where
         };
 
         service_metrics
-            .observe_query_execution_time(start.elapsed().as_secs_f64(), sd_id.deref().to_string());
+            .observe_query_execution_time(start.elapsed().as_secs_f64(), sd_id.to_string());
 
         Ok(result.as_http_response())
     }
@@ -501,6 +487,7 @@ mod tests {
         async fn run_query_with_complexity(
             &self,
             _query: Query,
+            _state: DeploymentState,
             _complexity: Option<u64>,
             _max_depth: Option<u8>,
             _max_first: Option<u32>,
@@ -508,7 +495,11 @@ mod tests {
             unimplemented!();
         }
 
-        async fn run_query(self: Arc<Self>, _query: Query) -> Arc<QueryResult> {
+        async fn run_query(
+            self: Arc<Self>,
+            _query: Query,
+            _state: DeploymentState,
+        ) -> Arc<QueryResult> {
             Arc::new(QueryResult::new(Some(q::Value::Object(
                 BTreeMap::from_iter(
                     vec![(
