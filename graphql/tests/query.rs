@@ -14,6 +14,7 @@ use graph::prelude::{
     GraphQlRunner as _, Logger, Query, QueryError, QueryExecutionError, QueryResult,
     QueryVariables, Schema, Store, SubgraphDeploymentEntity, SubgraphDeploymentId,
     SubgraphDeploymentStore, SubgraphManifest, Subscription, SubscriptionError, Value,
+    BLOCK_NUMBER_MAX,
 };
 use graph_graphql::prelude::*;
 use test_store::{
@@ -234,6 +235,9 @@ fn execute_query_document_with_variables(
     let query = Query::new(Arc::new(api_test_schema()), query, variables, None);
     let state = DeploymentState {
         id: query.schema.id.clone(),
+        reorg_count: 0,
+        max_reorg_depth: 0,
+        latest_ethereum_block_number: BLOCK_NUMBER_MAX,
     };
 
     graph::prelude::futures03::executor::block_on(

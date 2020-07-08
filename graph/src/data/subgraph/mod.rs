@@ -29,7 +29,7 @@ use crate::data::subgraph::schema::{
 };
 use crate::prelude::{
     anyhow::{self, Context},
-    format_err, impl_slog_value, BlockNumber, Deserialize, Fail, Serialize,
+    format_err, impl_slog_value, BlockNumber, Deserialize, Fail, Serialize, BLOCK_NUMBER_MAX,
 };
 use crate::util::ethereum::string_to_h256;
 use graphql_parser::query as q;
@@ -1189,13 +1189,20 @@ impl UnresolvedSubgraphManifest {
 #[derive(Debug)]
 pub struct DeploymentState {
     pub id: SubgraphDeploymentId,
+    pub reorg_count: u32,
+    pub max_reorg_depth: u32,
+    pub latest_ethereum_block_number: BlockNumber,
 }
 
 impl DeploymentState {
     /// Return a `DeploymentState` suitable for querying the metadata subgraph
     pub fn meta() -> Self {
+        // The metadata subgraph is not subject to reverts
         DeploymentState {
             id: SUBGRAPHS_ID.clone(),
+            reorg_count: 0,
+            max_reorg_depth: 0,
+            latest_ethereum_block_number: BLOCK_NUMBER_MAX,
         }
     }
 }
