@@ -5,7 +5,6 @@ use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::{insert_into, select, update};
 use futures03::FutureExt as _;
 use graph::prelude::{CancelGuard, CancelHandle, CancelToken, CancelableError};
-use graph::spawn_blocking_async_allow_panic;
 use lazy_static::lazy_static;
 use lru_time_cache::LruCache;
 use std::collections::{BTreeMap, HashMap};
@@ -671,7 +670,7 @@ impl Store {
         let cancel_guard = CancelGuard::new();
         let cancel_handle = cancel_guard.handle();
 
-        let result = spawn_blocking_async_allow_panic(move || {
+        let result = graph::spawn_blocking_allow_panic(move || {
             // It is possible time has passed between scheduling on the
             // threadpool and being executed. Time to check for cancel.
             cancel_handle.check_cancel()?;
@@ -686,7 +685,8 @@ impl Store {
 
             f(&conn, &cancel_handle)
         })
-        .await;
+        .await
+        .unwrap(); // Propagate panics, though there shouldn't be any.
 
         drop(cancel_guard);
 
