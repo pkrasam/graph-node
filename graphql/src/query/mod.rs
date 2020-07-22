@@ -63,6 +63,7 @@ where
         deadline: options.deadline,
         max_first: options.max_first,
         cache_status: Default::default(),
+        load_manager: options.load_manager,
     };
 
     if !query.is_query() {
@@ -82,7 +83,7 @@ where
     let start = Instant::now();
     let result = execute_root_selection_set(&ctx, selection_set, query_type, block_ptr);
     let elapsed = start.elapsed();
-    options.load_manager.add_query(query.shape_hash, elapsed);
+    ctx.load_manager.add_query(query.shape_hash, elapsed);
     if *graph::log::LOG_GQL_TIMING {
         info!(
             query_logger,

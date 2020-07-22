@@ -285,7 +285,8 @@ async fn can_query_one_to_one_relationship() {
             ",
         )
         .expect("Invalid test query"),
-    ).await;
+    )
+    .await;
 
     assert!(
         result.errors.is_none(),
@@ -382,7 +383,8 @@ async fn can_query_one_to_many_relationships_in_both_directions() {
         ",
         )
         .expect("Invalid test query"),
-    ).await;
+    )
+    .await;
 
     assert!(
         result.errors.is_none(),
@@ -479,7 +481,8 @@ async fn can_query_many_to_many_relationship() {
             ",
         )
         .expect("Invalid test query"),
-    ).await;
+    )
+    .await;
 
     assert!(
         result.errors.is_none(),
@@ -563,7 +566,8 @@ async fn query_variables_are_used() {
             )]
             .into_iter(),
         ))),
-    ).await;
+    )
+    .await;
 
     assert_eq!(
         result.data,
@@ -597,7 +601,8 @@ async fn skip_directive_works_with_query_variables() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("skip"), q::Value::Boolean(true))].into_iter(),
         ))),
-    ).await;
+    )
+    .await;
 
     // Assert that only names are returned
     assert_eq!(
@@ -619,7 +624,8 @@ async fn skip_directive_works_with_query_variables() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("skip"), q::Value::Boolean(false))].into_iter(),
         ))),
-    ).await;
+    )
+    .await;
 
     // Assert that IDs and names are returned
     assert_eq!(
@@ -668,7 +674,8 @@ async fn include_directive_works_with_query_variables() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("include"), q::Value::Boolean(true))].into_iter(),
         ))),
-    ).await;
+    )
+    .await;
 
     // Assert that IDs and names are returned
     assert_eq!(
@@ -702,7 +709,8 @@ async fn include_directive_works_with_query_variables() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("include"), q::Value::Boolean(false))].into_iter(),
         ))),
-    ).await;
+    )
+    .await;
 
     // Assert that only names are returned
     assert_eq!(
@@ -743,7 +751,11 @@ async fn query_complexity() {
     let max_complexity = Some(1_010_100);
 
     // This query is exactly at the maximum complexity.
-    let result = execute_subgraph_query_with_complexity(query, max_complexity);
+    let result = graph::spawn_blocking_allow_panic(move || {
+        execute_subgraph_query_with_complexity(query, max_complexity)
+    })
+    .await
+    .unwrap();
     assert!(result.errors.is_none());
 
     let query = Query::new(
@@ -772,7 +784,11 @@ async fn query_complexity() {
     );
 
     // The extra introspection causes the complexity to go over.
-    let result = execute_subgraph_query_with_complexity(query, max_complexity);
+    let result = graph::spawn_blocking_allow_panic(move || {
+        execute_subgraph_query_with_complexity(query, max_complexity)
+    })
+    .await
+    .unwrap();
     match result.errors.unwrap()[0] {
         QueryError::ExecutionError(QueryExecutionError::TooComplex(1_010_200, _)) => (),
         _ => panic!("did not catch complexity"),
@@ -875,9 +891,13 @@ async fn instant_timeout() {
         None,
     );
 
-    match execute_subgraph_query_with_deadline(query, Some(Instant::now()))
-        .errors
-        .unwrap()[0]
+    match graph::spawn_blocking_allow_panic(move || {
+        execute_subgraph_query_with_deadline(query, Some(Instant::now()))
+    })
+    .await
+    .unwrap()
+    .errors
+    .unwrap()[0]
     {
         QueryError::ExecutionError(QueryExecutionError::Timeout) => (), // Expected
         _ => panic!("did not time out"),
@@ -919,7 +939,8 @@ async fn variable_defaults() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("orderDir"), q::Value::Null)].into_iter(),
         ))),
-    ).await;
+    )
+    .await;
 
     assert!(result.errors.is_none());
     assert_eq!(
@@ -1010,7 +1031,8 @@ async fn nested_variable() {
         Some(QueryVariables::new(HashMap::from_iter(
             vec![(String::from("name"), q::Value::String("Lisa".to_string()))].into_iter(),
         ))),
-    ).await;
+    )
+    .await;
 
     assert!(result.errors.is_none());
     assert_eq!(
@@ -1085,7 +1107,8 @@ async fn can_filter_by_relationship_fields() {
         ",
         )
         .expect("invalid test query"),
-    ).await;
+    )
+    .await;
 
     assert!(
         result.errors.is_none(),
@@ -1138,7 +1161,8 @@ async fn cannot_filter_by_derved_relationship_fields() {
         ",
         )
         .expect("invalid test query"),
-    ).await;
+    )
+    .await;
 
     assert!(result.errors.is_some());
     match &result.errors.unwrap()[0] {
@@ -1228,7 +1252,8 @@ async fn can_use_nested_filter() {
         ",
         )
         .expect("invalid test query"),
-    ).await;
+    )
+    .await;
 
     assert_eq!(
         result.data.unwrap(),

@@ -9,6 +9,7 @@ use failure::format_err;
 use failure::Error;
 use graphql_parser::query as q;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Future for subscription results.
 pub type SubscriptionResultFuture =
@@ -50,4 +51,11 @@ pub trait GraphQlRunner: Send + Sync + 'static {
     }
 
     fn load_manager(&self) -> Arc<LoadManager>;
+}
+
+#[async_trait]
+pub trait QueryLoadManager: Send + Sync {
+    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit;
+
+    fn add_query(&self, shape_hash: u64, duration: Duration);
 }

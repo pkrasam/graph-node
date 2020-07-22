@@ -13,7 +13,7 @@ use crate::components::metrics::{Gauge, MetricsRegistry};
 use crate::components::store::PoolWaitStats;
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::QueryExecutionError;
-use crate::prelude::{debug, info, o, warn, Logger};
+use crate::prelude::{async_trait, debug, info, o, warn, CheapClone, Logger, QueryLoadManager};
 use crate::util::stats::{MovingStats, BIN_SIZE, WINDOW_SIZE};
 
 const ZERO_DURATION: Duration = Duration::from_millis(0);
@@ -237,6 +237,11 @@ pub struct LoadManager {
     jailed_queries: RwLock<HashSet<u64>>,
     kill_state: RwLock<KillState>,
     effort_gauge: Box<Gauge>,
+
+    // Limits the number of graphql queries that may execute concurrently.
+    query_semaphore: Arc<tokio::sync::Semaphore>,
+    semaphore_wait_stats: RwLock<MovingStats>,
+    semaphore_wait_gauge: Box<Gauge>,
 }
 
 impl LoadManager {
@@ -245,6 +250,7 @@ impl LoadManager {
         store_wait_stats: PoolWaitStats,
         blocked_queries: Vec<Arc<q::Document>>,
         registry: Arc<dyn MetricsRegistry>,
+        store_conn_pool_size: usize,
     ) -> Self {
         let logger = logger.new(o!("component" => "LoadManager"));
         let blocked_queries = blocked_queries
@@ -268,6 +274,19 @@ impl LoadManager {
                 HashMap::new(),
             )
             .expect("failed to create `query_effort_ms` counter");
+        let semaphore_wait_gauge = registry
+            .new_gauge(
+                String::from("query_semaphore_wait_ms"),
+                String::from("Moving average of time spent running queries"),
+                HashMap::new(),
+            )
+            .expect("failed to create `query_effort_ms` counter");
+
+        // A query is always consuming a CPU core, or a DB connection, or both.
+        // So if more than `store_conn_pool_size + num_cpus::get()` queries are executing,
+        // there will be contention for resources.
+        let max_concurrent_queries = store_conn_pool_size + num_cpus::get();
+        let query_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
         Self {
             logger,
             effort: QueryEffort::default(),
@@ -276,12 +295,9 @@ impl LoadManager {
             jailed_queries: RwLock::new(HashSet::new()),
             kill_state: RwLock::new(KillState::new()),
             effort_gauge,
-        }
-    }
-
-    pub fn add_query(&self, shape_hash: u64, duration: Duration) {
-        if !*LOAD_MANAGEMENT_DISABLED {
-            self.effort.add(shape_hash, duration, &self.effort_gauge);
+            query_semaphore,
+            semaphore_wait_stats: RwLock::new(MovingStats::default()),
+            semaphore_wait_gauge,
         }
     }
 
@@ -486,5 +502,31 @@ impl LoadManager {
             }
         }
         kill_rate
+    }
+
+    fn add_wait_time(&self, duration: Duration) {
+        let wait_avg = {
+            let mut wait_stats = self.semaphore_wait_stats.write().unwrap();
+            wait_stats.add(duration);
+            wait_stats.average()
+        };
+        let wait_avg = wait_avg.map(|wait_avg| wait_avg.as_millis()).unwrap_or(0);
+        self.semaphore_wait_gauge.set(wait_avg as f64);
+    }
+}
+
+#[async_trait]
+impl QueryLoadManager for LoadManager {
+    async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+        let start = Instant::now();
+        let permit = self.query_semaphore.cheap_clone().acquire_owned().await;
+        self.add_wait_time(start.elapsed());
+        permit
+    }
+
+    fn add_query(&self, shape_hash: u64, duration: Duration) {
+        if !*LOAD_MANAGEMENT_DISABLED {
+            self.effort.add(shape_hash, duration, &self.effort_gauge);
+        }
     }
 }
