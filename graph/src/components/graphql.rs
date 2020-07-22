@@ -34,11 +34,8 @@ pub trait GraphQlRunner: Send + Sync + 'static {
     /// Runs a GraphQL subscription and returns a stream of results.
     fn run_subscription(&self, subscription: Subscription) -> SubscriptionResultFuture;
 
-    async fn query_metadata(
-        &self,
-        query: Query,
-        state: DeploymentState,
-    ) -> Result<q::Value, Error> {
+    async fn query_metadata(&self, query: Query) -> Result<q::Value, Error> {
+        let state = DeploymentState::meta();
         let result = self
             .run_query_with_complexity(query, state, None, None, None)
             .await;
