@@ -1,4 +1,6 @@
-use graph::prelude::{info, o, EthereumBlockPointer, Logger, QueryExecutionError, QueryResult};
+use graph::prelude::{
+    info, o, CheapClone, EthereumBlockPointer, Logger, QueryExecutionError, QueryResult,
+};
 use graphql_parser::query as q;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -8,7 +10,6 @@ use std::time::Instant;
 use graph::data::graphql::effort::LoadManager;
 
 use crate::execution::*;
-use crate::schema::ast as sast;
 
 /// Utilities for working with GraphQL query ASTs.
 pub mod ast;
@@ -35,9 +36,9 @@ pub struct QueryExecutionOptions<R> {
 
 /// Executes a query and returns a result.
 /// If the query is not cacheable, the `Arc` may be unwrapped.
-pub fn execute_query<R>(
+pub async fn execute_query<R>(
     query: Arc<Query>,
-    selection_set: Option<&q::SelectionSet>,
+    selection_set: Option<q::SelectionSet>,
     block_ptr: Option<EthereumBlockPointer>,
     options: QueryExecutionOptions<R>,
 ) -> Arc<QueryResult>
@@ -51,12 +52,12 @@ where
     };
     let query_id = format!("{:x}-{:x}", query.shape_hash, query_hash);
     let query_logger = options.logger.new(o!(
-        "subgraph_id" => (*query.schema.id).clone(),
+        "subgraph_id" => (*query.schema.id()).clone(),
         "query_id" => query_id
     ));
 
     // Create a fresh execution context
-    let ctx = ExecutionContext {
+    let ctx = Arc::new(ExecutionContext {
         logger: query_logger.clone(),
         resolver: options.resolver,
         query: query.clone(),
@@ -64,26 +65,25 @@ where
         max_first: options.max_first,
         cache_status: Default::default(),
         load_manager: options.load_manager,
-    };
+    });
 
     if !query.is_query() {
         return Arc::new(
             QueryExecutionError::NotSupported("Only queries are supported".to_string()).into(),
         );
     }
-    let selection_set = selection_set.unwrap_or(&query.selection_set);
-
-    // Obtain the root Query type and fail if there isn't one
-    let query_type = match sast::get_root_query_type(&ctx.query.schema.document) {
-        Some(t) => t,
-        None => return Arc::new(QueryExecutionError::NoRootQueryObjectType.into()),
-    };
+    let selection_set = selection_set
+        .map(Arc::new)
+        .unwrap_or_else(|| query.selection_set.cheap_clone());
 
     // Execute top-level `query { ... }` and `{ ... }` expressions.
+    let query_type = ctx.query.schema.query_type.cheap_clone();
     let start = Instant::now();
-    let result = execute_root_selection_set(&ctx, selection_set, query_type, block_ptr);
+    let result =
+        execute_root_selection_set(ctx.cheap_clone(), selection_set, query_type, block_ptr).await;
     let elapsed = start.elapsed();
     ctx.load_manager.add_query(query.shape_hash, elapsed);
+
     if *graph::log::LOG_GQL_TIMING {
         info!(
             query_logger,

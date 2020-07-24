@@ -10,10 +10,11 @@ use std::time::{Duration, Instant};
 
 use graph::prelude::{
     async_trait, futures03::stream::StreamExt, futures03::FutureExt, futures03::TryFutureExt, o,
-    slog, tokio, Entity, EntityKey, EntityOperation, EthereumBlockPointer, FutureExtension,
-    GraphQlRunner as _, Logger, Query, QueryError, QueryExecutionError, QueryLoadManager,
-    QueryResult, QueryVariables, Schema, Store, SubgraphDeploymentEntity, SubgraphDeploymentId,
-    SubgraphDeploymentStore, SubgraphManifest, Subscription, SubscriptionError, Value,
+    slog, tokio, ApiSchema, Entity, EntityKey, EntityOperation, EthereumBlockPointer,
+    FutureExtension, GraphQlRunner as _, Logger, Query, QueryError, QueryExecutionError,
+    QueryLoadManager, QueryResult, QueryVariables, Schema, Store, SubgraphDeploymentEntity,
+    SubgraphDeploymentId, SubgraphDeploymentStore, SubgraphManifest, Subscription,
+    SubscriptionError, Value,
 };
 use graph_graphql::prelude::*;
 use test_store::{
@@ -73,11 +74,11 @@ fn test_schema(id: SubgraphDeploymentId) -> Schema {
     .expect("Test schema invalid")
 }
 
-fn api_test_schema() -> Schema {
+fn api_test_schema() -> ApiSchema {
     let mut schema = test_schema(TEST_SUBGRAPH_ID.clone());
     schema.document = api_schema(&schema.document).expect("Failed to derive API schema");
     schema.add_subgraph_id_directives(TEST_SUBGRAPH_ID.clone());
-    schema
+    ApiSchema::from_api_schema(schema).unwrap()
 }
 
 fn insert_test_entities(store: &impl Store, id: SubgraphDeploymentId) {
@@ -1292,7 +1293,7 @@ async fn can_use_nested_filter() {
     )
 }
 
-fn check_musicians_at(
+async fn check_musicians_at(
     query: &str,
     block_var: Option<(&str, q::Value)>,
     expected: Result<Vec<&str>, &str>,
@@ -1305,7 +1306,7 @@ fn check_musicians_at(
         QueryVariables::new(map)
     });
 
-    let result = execute_query_document_with_variables(query, vars);
+    let result = execute_query_document_with_variables(query, vars).await;
 
     match (
         STORE.uses_relational_schema(&*TEST_SUBGRAPH_ID).unwrap(),
@@ -1356,13 +1357,13 @@ fn check_musicians_at(
     }
 }
 
-#[test]
-fn query_at_block() {
+#[tokio::test]
+async fn query_at_block() {
     use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK};
 
     async fn musicians_at(block: &str, expected: Result<Vec<&str>, &str>, qid: &str) {
         let query = format!("query {{ musicians(block: {{ {} }}) {{ id }} }}", block);
-        check_musicians_at(&query, None, expected, qid);
+        check_musicians_at(&query, None, expected, qid).await;
     }
 
     fn hash(block: &FakeBlock) -> String {
@@ -1383,16 +1384,16 @@ fn query_at_block() {
     musicians_at(&hash(&*BLOCK_THREE), Err(BLOCK_HASH_NOT_FOUND), "h3").await;
 }
 
-#[test]
-fn query_at_block_with_vars() {
+#[tokio::test]
+async fn query_at_block_with_vars() {
     use test_store::block_store::{FakeBlock, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK};
 
-    fn musicians_at_nr(block: i32, expected: Result<Vec<&str>, &str>, qid: &str) {
+    async fn musicians_at_nr(block: i32, expected: Result<Vec<&str>, &str>, qid: &str) {
         let query = "query by_nr($block: Int!) { musicians(block: { number: $block }) { id } }";
         let number = q::Value::Int(q::Number::from(block));
         let var = Some(("block", number.clone()));
 
-        check_musicians_at(query, var, expected.clone(), qid);
+        check_musicians_at(query, var, expected.clone(), qid).await;
 
         let query = "query by_nr($block: Block_height!) { musicians(block: $block) { id } }";
         let mut map = BTreeMap::new();
@@ -1400,28 +1401,28 @@ fn query_at_block_with_vars() {
         let block = q::Value::Object(map);
         let var = Some(("block", block));
 
-        check_musicians_at(query, var, expected, qid);
+        check_musicians_at(query, var, expected, qid).await;
     }
 
-    fn musicians_at_hash(block: &FakeBlock, expected: Result<Vec<&str>, &str>, qid: &str) {
+    async fn musicians_at_hash(block: &FakeBlock, expected: Result<Vec<&str>, &str>, qid: &str) {
         let query = "query by_hash($block: String!) { musicians(block: { hash: $block }) { id } }";
         let var = Some(("block", q::Value::String(block.hash.to_owned())));
 
-        check_musicians_at(query, var, expected, qid);
+        check_musicians_at(query, var, expected, qid).await;
     }
 
     const BLOCK_NOT_INDEXED: &str = "subgraph graphqlTestsQuery has only indexed \
          up to block number 1 and data for block number 7000 is therefore not yet available";
     const BLOCK_HASH_NOT_FOUND: &str = "no block with that hash found";
 
-    musicians_at_nr(7000, Err(BLOCK_NOT_INDEXED), "n7000");
-    musicians_at_nr(0, Ok(vec!["m1", "m2"]), "n0");
-    musicians_at_nr(1, Ok(vec!["m1", "m2", "m3", "m4"]), "n1");
+    musicians_at_nr(7000, Err(BLOCK_NOT_INDEXED), "n7000").await;
+    musicians_at_nr(0, Ok(vec!["m1", "m2"]), "n0").await;
+    musicians_at_nr(1, Ok(vec!["m1", "m2", "m3", "m4"]), "n1").await;
 
-    musicians_at_hash(&GENESIS_BLOCK, Ok(vec!["m1", "m2"]), "h0");
-    musicians_at_hash(&BLOCK_ONE, Ok(vec!["m1", "m2", "m3", "m4"]), "h1");
-    musicians_at_hash(&BLOCK_TWO, Ok(vec!["m1", "m2", "m3", "m4"]), "h2");
-    musicians_at_hash(&BLOCK_THREE, Err(BLOCK_HASH_NOT_FOUND), "h3");
+    musicians_at_hash(&GENESIS_BLOCK, Ok(vec!["m1", "m2"]), "h0").await;
+    musicians_at_hash(&BLOCK_ONE, Ok(vec!["m1", "m2", "m3", "m4"]), "h1").await;
+    musicians_at_hash(&BLOCK_TWO, Ok(vec!["m1", "m2", "m3", "m4"]), "h2").await;
+    musicians_at_hash(&BLOCK_THREE, Err(BLOCK_HASH_NOT_FOUND), "h3").await;
 }
 
 /// Check that the `extensions` field in the query result has the correct format
