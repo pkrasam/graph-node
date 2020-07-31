@@ -4,6 +4,7 @@ use diesel::r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool};
 use graph::prelude::*;
 use graph::util::security::SafeDisplay;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -34,14 +35,14 @@ impl EventHandler {
     fn new(logger: Logger, registry: Arc<dyn MetricsRegistry>, wait_stats: PoolWaitStats) -> Self {
         let count_gauge = registry
             .global_gauge(
-                String::from("store_connection_checkout_count"),
-                String::from("The number of Postgres connections currently checked out"),
+                "store_connection_checkout_count",
+                "The number of Postgres connections currently checked out",
             )
             .expect("failed to create `store_connection_checkout_count` counter");
         let wait_gauge = registry
             .global_gauge(
-                String::from("store_connection_wait_time_ms"),
-                String::from("Average connection wait time"),
+                "store_connection_wait_time_ms",
+                "Average connection wait time",
             )
             .expect("failed to create `store_connection_wait_time_ms` counter");
         EventHandler {
@@ -97,8 +98,9 @@ pub fn create_connection_pool(
     let logger_pool = logger.new(o!("component" => "PostgresConnectionPool"));
     let error_counter = registry
         .global_counter(
-            String::from("store_connection_error_count"),
-            String::from("The number of Postgres connections errors"),
+            "store_connection_error_count",
+            "The number of Postgres connections errors",
+            HashMap::new(),
         )
         .expect("failed to create `store_connection_error_count` counter");
     let error_handler = Box::new(ErrorHandler(logger_pool.clone(), error_counter));
