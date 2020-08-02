@@ -4,7 +4,6 @@ use diesel::r2d2::{self, event as e, ConnectionManager, HandleEvent, Pool};
 use graph::prelude::*;
 use graph::util::security::SafeDisplay;
 
-use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -100,7 +99,7 @@ pub fn create_connection_pool(
         .global_counter(
             "store_connection_error_count",
             "The number of Postgres connections errors",
-            HashMap::new(),
+            None,
         )
         .expect("failed to create `store_connection_error_count` counter");
     let error_handler = Box::new(ErrorHandler(logger_pool.clone(), error_counter));

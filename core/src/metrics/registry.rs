@@ -129,13 +129,16 @@ impl MetricsRegistryTrait for MetricsRegistry {
         &self,
         name: &str,
         help: &str,
-        const_labels: HashMap<String, String>,
+        subgraph: Option<&str>,
     ) -> Result<Counter, PrometheusError> {
         let maybe_counter = self.global_counters.read().unwrap().get(name).cloned();
         if let Some(counter) = maybe_counter {
             Ok(counter.clone())
         } else {
-            let counter = *self.new_counter(&name, &help, const_labels)?;
+            let counter = match subgraph {
+                None => *self.new_counter(&name, &help)?,
+                Some(subgraph) => *self.new_subgraph_counter(name, help, subgraph)?,
+            };
             self.global_counters
                 .write()
                 .unwrap()
@@ -149,7 +152,7 @@ impl MetricsRegistryTrait for MetricsRegistry {
         if let Some(gauge) = maybe_gauge {
             Ok(gauge.clone())
         } else {
-            let gauge = *self.new_gauge(name, help, HashMap::new())?;
+            let gauge = *self.new_gauge(name, help)?;
             self.global_gauges
                 .write()
                 .unwrap()

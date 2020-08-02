@@ -727,7 +727,7 @@ impl Store {
                 .global_counter(
                     "subgraph_get_entity_conn_secs",
                     "total time spent getting an entity connection",
-                    registry.subgraph_labels(subgraph.as_str()),
+                    Some(subgraph.as_str()),
                 )
                 .map_err(Into::<Error>::into)?
                 .inc_by(start.elapsed().as_secs_f64());
@@ -778,7 +778,7 @@ impl Store {
             .global_counter(
                 "subgraph_get_entity_conn_secs",
                 "total time spent getting an entity connection",
-                self.registry.subgraph_labels(subgraph.as_str()),
+                Some(subgraph.as_str()),
             )?
             .inc_by(start.elapsed().as_secs_f64());
         let storage = self.storage(&conn, subgraph)?;

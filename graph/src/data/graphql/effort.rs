@@ -265,7 +265,6 @@ impl LoadManager {
             .new_gauge(
                 "query_effort_ms",
                 "Moving average of time spent running queries",
-                HashMap::new(),
             )
             .expect("failed to create `query_effort_ms` counter");
         Self {

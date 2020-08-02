@@ -26,8 +26,12 @@ impl MetricsRegistryTrait for MockMetricsRegistry {
         &self,
         name: &str,
         help: &str,
-        const_labels: HashMap<String, String>,
+        subgraph: Option<&str>,
     ) -> Result<Counter, PrometheusError> {
+        let mut const_labels = HashMap::new();
+        if let Some(subgraph) = subgraph {
+            const_labels.insert(String::from("subgraph"), String::from(subgraph));
+        }
         let opts = Opts::new(name, help).const_labels(const_labels);
         Counter::with_opts(opts)
     }
