@@ -532,7 +532,7 @@ pub struct SubgraphEthRpcMetrics {
 }
 
 impl SubgraphEthRpcMetrics {
-    pub fn new(registry: Arc<impl MetricsRegistry>, subgraph_hash: String) -> Self {
+    pub fn new(registry: Arc<impl MetricsRegistry>, subgraph_hash: &str) -> Self {
         let request_duration = registry
             .new_subgraph_gauge_vec(
                 "subgraph_eth_rpc_request_duration",
@@ -578,7 +578,7 @@ impl BlockStreamMetrics {
     pub fn new(
         registry: Arc<impl MetricsRegistry>,
         ethrpc_metrics: Arc<SubgraphEthRpcMetrics>,
-        deployment_id: SubgraphDeploymentId,
+        deployment_id: &SubgraphDeploymentId,
         stopwatch: StopwatchMetrics,
     ) -> Self {
         let blocks_behind = registry
